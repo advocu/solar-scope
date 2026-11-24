@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.advocu.solar-scope",
+  "name": "Solar Scope",
+  "version": "1.0.0",
+  "author": "Suyash Verma",
+  "description": "A live solar system in the bar: planets as dots on thin orbits, with playback and a hologram mode.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Solar Scope",
+    "category": "Info",
+    "defaultSection": "right",
+    "allowMultiple": false,
+    "defaults": {
+      "showPluto": false,
+      "showNames": true
+    },
+    "schema": [
+      {
+        "key": "showPluto",
+        "type": "boolean",
+        "label": "Show Pluto (P)",
+        "defaultValue": false
+      },
+      {
+        "key": "showNames",
+        "type": "boolean",
+        "label": "Show planet names (Space or N)",
+        "defaultValue": true
+      }
+    ],
+    "description": "Tiny orbit icon; opens a scope of the solar system.",
+    "aliases": [
+      "solar",
+      "planets",
+      "orrery"
+    ]
+  },
+  "license": "MIT"
+}

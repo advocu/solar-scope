@@ -1,0 +1,25 @@
+{
+ "schema_version": 1,
+ "bodies": [
+  {"id":"sun","name":"Sun","horizons_id":"10","type":"star","parent":null,"radius_km":695700,"default_visible":true,"stats":{"mass_kg":1.989e30}},
+  {"id":"mercury","name":"Mercury","horizons_id":"199","type":"planet","parent":"sun","radius_km":2439.7,"default_visible":true,"stats":{"mass_kg":3.302e23,"period_days":87.969},
+   "elements":{"a":[0.38709927,0.00000037],"e":[0.20563593,0.00001906],"i":[7.00497902,-0.00594749],"L":[252.25032350,149472.67411175],"varpi":[77.45779628,0.16047689],"node":[48.33076593,-0.12534081]}},
+  {"id":"venus","name":"Venus","horizons_id":"299","type":"planet","parent":"sun","radius_km":6051.8,"default_visible":true,"stats":{"mass_kg":4.869e24,"period_days":224.701},
+   "elements":{"a":[0.72333566,0.00000390],"e":[0.00677672,-0.00004107],"i":[3.39467605,-0.00078890],"L":[181.97909950,58517.81538729],"varpi":[131.60246718,0.00268329],"node":[76.67984255,-0.27769418]}},
+  {"id":"earth","name":"Earth","horizons_id":"399","type":"planet","parent":"sun","radius_km":6371.0,"default_visible":true,"stats":{"mass_kg":5.972e24,"period_days":365.256},
+   "elements_note":"Earth-Moon barycentre elements (≤~4700 km offset from Earth)",
+   "elements":{"a":[1.00000261,0.00000562],"e":[0.01671123,-0.00004392],"i":[-0.00001531,-0.01294668],"L":[100.46457166,35999.37244981],"varpi":[102.93768193,0.32327364],"node":[0.0,0.0]}},
+  {"id":"mars","name":"Mars","horizons_id":"499","type":"planet","parent":"sun","radius_km":3389.5,"default_visible":true,"stats":{"mass_kg":6.417e23,"period_days":686.980},
+   "elements":{"a":[1.52371034,0.00001847],"e":[0.09339410,0.00007882],"i":[1.84969142,-0.00813131],"L":[-4.55343205,19140.30268499],"varpi":[-23.94362959,0.44441088],"node":[49.55953891,-0.29257343]}},
+  {"id":"jupiter","name":"Jupiter","horizons_id":"599","type":"planet","parent":"sun","radius_km":69911,"default_visible":true,"stats":{"mass_kg":1.898e27,"period_days":4332.59},
+   "elements":{"a":[5.20288700,-0.00011607],"e":[0.04838624,-0.00013253],"i":[1.30439695,-0.00183714],"L":[34.39644051,3034.74612775],"varpi":[14.72847983,0.21252668],"node":[100.47390909,0.20469106]}},
+  {"id":"saturn","name":"Saturn","horizons_id":"699","type":"planet","parent":"sun","radius_km":58232,"default_visible":true,"stats":{"mass_kg":5.683e26,"period_days":10759.22},
+   "elements":{"a":[9.53667594,-0.00125060],"e":[0.05386179,-0.00050991],"i":[2.48599187,0.00193609],"L":[49.95424423,1222.49362201],"varpi":[92.59887831,-0.41897216],"node":[113.66242448,-0.28867794]}},
+  {"id":"uranus","name":"Uranus","horizons_id":"799","type":"planet","parent":"sun","radius_km":25362,"default_visible":true,"stats":{"mass_kg":8.681e25,"period_days":30688.5},
+   "elements":{"a":[19.18916464,-0.00196176],"e":[0.04725744,-0.00004397],"i":[0.77263783,-0.00242939],"L":[313.23810451,428.48202785],"varpi":[170.95427630,0.40805281],"node":[74.01692503,0.04240589]}},
+  {"id":"neptune","name":"Neptune","horizons_id":"899","type":"planet","parent":"sun","radius_km":24622,"default_visible":true,"stats":{"mass_kg":1.024e26,"period_days":60182},
+   "elements":{"a":[30.06992276,0.00026291],"e":[0.00859048,0.00005105],"i":[1.77004347,0.00035372],"L":[-55.12002969,218.45945325],"varpi":[44.96476227,-0.32241464],"node":[131.78422574,-0.00508664]}},
+  {"id":"pluto","name":"Pluto","horizons_id":"999","type":"dwarf_planet","parent":"sun","radius_km":1188.3,"default_visible":false,"stats":{"mass_kg":1.303e22,"period_days":90560},
+   "elements":{"a":[39.48211675,-0.00031596],"e":[0.24882730,0.00005170],"i":[17.14001206,0.00004818],"L":[238.92903833,145.20780515],"varpi":[224.06891629,-0.04062942],"node":[110.30393684,-0.01183482]}}
+ ]
+}
