@@ -80,7 +80,7 @@ omarchy-shell solarscope state
 
 ## Privileges
 
-No sudo, hooks, or extra packages. The only network access is `update_cache.py` talking to `ssd.jpl.nasa.gov`. The plugin writes under `~/.cache/solar-scope` and its own Omarchy plugin settings (holo, Pluto, names). It does not edit your Hyprland or shell configuration.
+No elevated privileges, hooks, or extra packages. The only network access is `update_cache.py` talking to `ssd.jpl.nasa.gov`. The plugin writes under `~/.cache/solar-scope` and its own Omarchy plugin settings (holo, Pluto, names). It does not edit your Hyprland or shell configuration.
 
 ## License
 
