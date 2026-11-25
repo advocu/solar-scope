@@ -213,6 +213,7 @@ Item {
             e.accepted = true
         }
     }
+    onActiveChanged: if (active) { setPage(1); table.positionViewAtBeginning(); _mapSelection() }   // the panel always opens on page 1
     function setPage(n) {
         if (!(n === 1 || n === 2 || n === 3) || n === page) return
         page = n
@@ -264,7 +265,8 @@ Item {
     // ---- table (fixed column widths, ListView; pattern from asteroid-radar Panel.qml:423-430, 967)
     readonly property real tableW: width - 2 * pad
     // Narrow: drop the light-time column so nothing collides and names are never elided.
-    readonly property var colW: narrow ? [tableW * 0.28, tableW * 0.22, tableW * 0.26, tableW * 0.24, 0]
+    readonly property var colW: narrow ? (page === 1 ? [tableW * 0.28, tableW * 0.22, tableW * 0.26, tableW * 0.24, 0]
+                                                     : [tableW * 0.32, tableW * 0.20, tableW * 0.26, tableW * 0.22, 0])   // v1.1 narrow pages 2/3: longer names
                                        : [tableW * 0.18, tableW * 0.20, tableW * 0.22, tableW * 0.20, tableW * 0.20]
     readonly property int rowH: narrow ? 21 : 25
     component Cell: Text {
@@ -310,8 +312,7 @@ Item {
                 anchors { left: parent.left; right: parent.right; leftMargin: 6; rightMargin: 6; verticalCenter: parent.verticalCenter }
                 readonly property real k: (root.tableW - 12) / root.tableW
                 Cell { col: 0; color: row.c; width: root.colW[0] * parent.k; opacity: row.sel ? 1 : 0.75; font.bold: row.sel
-                       text: model.extra && root.narrow ? model.sname : model.name
-                       elide: model.extra && root.narrow ? Text.ElideRight : Text.ElideNone }
+                       text: model.extra && root.narrow ? model.sname : model.name }   // narrow: short names (catalog "short")
                 Cell { col: 1; color: row.c; width: root.colW[1] * parent.k; text: root.fmtAU(model.dist, model.extra); opacity: row.sel ? 1 : 0.75 }
                 Cell { col: 2; color: row.c; width: root.colW[2] * parent.k; opacity: row.sel ? 1 : 0.75
                        text: model.bid === "earth" ? "\u2013" : root.fmtAU(model.distEarth, model.extra) }
@@ -358,7 +359,8 @@ Item {
     function _syncExtra() {
         if (page === 1) return
         var l = extraRows.filter(function(x){ return x.page === root.page })
-        if (page === 3) l = l.slice().sort(function(a, b){ var fa = isFinite(a.dist), fb = isFinite(b.dist); return fa && fb ? a.dist - b.dist : fa ? -1 : fb ? 1 : 0 })
+        if (page === 3) l = l.map(function(x, i){ return [x, i] }).sort(function(p, q){ var a = p[0], b = q[0], fa = isFinite(a.dist), fb = isFinite(b.dist)
+                return fa && fb ? a.dist - b.dist || p[1] - q[1] : fa ? -1 : fb ? 1 : p[1] - q[1] }).map(function(p){ return p[0] })   // missing: catalog order
         _fill(extraModel, l.map(_xrow))
     }
     onExtraRowsChanged: { _syncRows(); _syncExtra() }
