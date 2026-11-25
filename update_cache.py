@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Solar Scope ephemeris cache refresher (python3 stdlib only, the only Python piece the plugin runs).
 
-usage: update_cache.py [--live [--force]] [--cache-dir DIR] [--bodies FILE] [--years Y] [--ids a,b,...]
+usage: update_cache.py [--live [--force] | --extras] [--cache-dir DIR] [--bodies FILE] [--catalog FILE] [--years Y] [--ids a,b,...]
 Full mode (default, weekly): +-Y years daily -> <dir>/<id>.json (+ status.json)
 Live mode (every ~30 min):    now-1h..now+2h at 30 min -> <dir>/live.json (+ status.json)
+Extras mode (weekly):         table-only bodies from catalog.json, now-8d..now+364d at 4 d -> <dir>/extras.json
+                              (never writes status.json: the header describes the planets only)
 Each body is fetched independently (2 tries). A body that still fails keeps its previous data and is
 listed in status.json staleBodies. Prints exactly one short, sanitized status line:
   "OK <n> bodies <start>..<stop> <dir>"                     full, all bodies       exit 0
@@ -11,8 +13,10 @@ listed in status.json staleBodies. Prints exactly one short, sanitized status li
   "OK live <n> bodies <fetchedAt> <dir>/live.json"          live, all bodies       exit 0
   "OK live <k>/<n> bodies, <m> cached <fetchedAt> <path>"   live, some failed      exit 0
   "OK skipped live.json age <m>m < 25m"                     live, fresh            exit 0
-  "ERROR horizons unavailable|horizons timeout|interrupted|bodies.json unreadable|update failed"  exit 1
-Run-level deadline (--deadline / SOLAR_SCOPE_DEADLINE, default 45 s); per request min(15 s, remaining).
+  "OK extras <n> bodies <fetchedAt> <path>"                 extras, all bodies     exit 0
+  "OK extras <k>/<n> bodies, <m> cached <fetchedAt> <path>" extras, some failed    exit 0
+  "ERROR horizons unavailable|horizons timeout|interrupted|bodies.json unreadable|catalog.json unreadable|update failed"  exit 1
+Run-level deadline (--deadline / SOLAR_SCOPE_DEADLINE, default 45 s; --extras default 150 s); per request min(15 s, remaining).
 A timeout or connection failure means the server is down: no retries, remaining bodies kept stale.
 status.json is always written, also on deadline, SIGTERM and SIGINT. No .tmp files are left behind.
 Full error details go only to <dir>/update.log (rotated to update.log.1 at ~200 KB).
@@ -28,6 +32,8 @@ JITTER_S = float(os.environ.get("SOLAR_SCOPE_JITTER_S", "0.5"))
 BACKOFF_S = float(os.environ.get("SOLAR_SCOPE_BACKOFF_S", "5"))
 REQUEST_TIMEOUT_S = 15.0
 DEFAULT_DEADLINE_S = float(os.environ.get("SOLAR_SCOPE_DEADLINE", "45"))
+EXTRAS_DEADLINE_S = float(os.environ.get("SOLAR_SCOPE_DEADLINE", "150"))
+EXTRAS_BEFORE_D, EXTRAS_AFTER_D, EXTRAS_STEP_D = 8, 364, 4
 LIVE_MIN_AGE_S = 25 * 60
 LIVE_STEP_MIN, LIVE_BEFORE_H, LIVE_AFTER_H = 30, 1, 2
 
@@ -231,6 +237,43 @@ def run_live(cache_dir, bodies_path, ids, force):
         "staleBodies": failed, "columns": ["jd_tdb", "x", "y", "z", "vx", "vy", "vz"], "bodies": out})
     return f"OK live {_counts(ok, failed)} {_iso(fetched)} {live_path}", fetched, failed
 
+def run_extras(cache_dir, catalog_path, ids):
+    """Extras mode: table-only bodies (catalog.json). Per body: a failure keeps its previous rows. Returns the status
+    line; raises AllFailed (extras.json untouched) when nothing succeeded."""
+    path = os.path.join(cache_dir, "extras.json")
+    bodies = _load_bodies(catalog_path, ids)
+    now = _utcnow(); today = now.date()
+    s, e = today - dt.timedelta(days=EXTRAS_BEFORE_D), today + dt.timedelta(days=EXTRAS_AFTER_D)
+    old_bodies = (_read_json(path) or {}).get("bodies") or {}
+    out, ok, failed, reason = {}, [], [], "horizons unavailable"
+    def keep_old(x):
+        failed.append(x["id"])
+        if isinstance(old_bodies.get(x["id"]), dict): out[x["id"]] = old_bodies[x["id"]]
+    for i, b in enumerate(bodies):
+        start, stop = s.isoformat(), e.isoformat()
+        span = b.get("span")
+        if span:  # clamp to the trajectory's valid span (e.g. the Roadster: 2018-02-07 03:00 .. 2090-01-01)
+            start, stop = max(start, span[0]), min(stop, span[1])
+            if start >= stop: keep_old(b); continue
+        try:
+            rows = fetch_range(b["horizons_id"], start, stop, f"{EXTRAS_STEP_D}d", label=b["id"])
+        except (ServerDown, Interrupted) as ex:  # stop: this and every remaining body keep old rows
+            reason = ex.reason
+            _log(f"extras: stopping at {b['id']}: {reason}; kept {len(bodies) - i} bodies stale")
+            for x in bodies[i:]: keep_old(x)
+            break
+        except Exception:
+            keep_old(b); continue
+        out[b["id"]] = {"horizons_id": b["horizons_id"], "rows": rows, "fetched_utc": _iso(_utcnow())}
+        ok.append(b["id"])
+    if not ok: raise AllFailed(",".join(failed), reason)
+    fetched = _utcnow()
+    os.makedirs(cache_dir, exist_ok=True)
+    _atomic_json(path, {"kind": "extras", "fetched_utc": _iso(fetched), "fetchedAt": _iso(fetched), "frame": "heliocentric ecliptic J2000",
+        "units": "AU, AU/day", "time": "JD TDB", "step_days": EXTRAS_STEP_D, "window": [s.isoformat(), e.isoformat()],
+        "staleBodies": failed, "columns": ["jd_tdb", "x", "y", "z", "vx", "vy", "vz"], "bodies": out})
+    return f"OK extras {_counts(ok, failed)} {_iso(fetched)} {path}"
+
 def _counts(ok, failed):
     n = len(ok) + len(failed)
     return f"{n} bodies" if not failed else f"{len(ok)}/{n} bodies, {len(failed)} cached"
@@ -276,8 +319,11 @@ def main(argv=None):
     ap.add_argument("--ids", default="")
     ap.add_argument("--live", action="store_true", help="fetch the 3 h live window into live.json")
     ap.add_argument("--force", action="store_true", help="with --live: ignore the 25-minute freshness check")
-    ap.add_argument("--deadline", type=float, default=DEFAULT_DEADLINE_S, help="whole-run limit in seconds (default 45)")
+    ap.add_argument("--extras", action="store_true", help="fetch the table-only bodies of catalog.json into extras.json")
+    ap.add_argument("--catalog", default=os.path.join(HERE, "catalog.json"))
+    ap.add_argument("--deadline", type=float, default=None, help="whole-run limit in seconds (default 45; --extras 150)")
     a = ap.parse_args(argv)
+    if a.deadline is None: a.deadline = EXTRAS_DEADLINE_S if a.extras else DEFAULT_DEADLINE_S
     _logdir[0] = a.cache_dir
     _deadline[0] = time.monotonic() + max(1.0, a.deadline)
     def _on_signal(signum, _frame):
@@ -287,6 +333,16 @@ def main(argv=None):
     signal.alarm(int(math.ceil(max(1.0, a.deadline))) + 5)  # hard backstop (e.g. a DNS hang)
     ids = set(filter(None, a.ids.split(",")))
     attempt = _utcnow()
+    if a.extras:  # own file, own line; status.json is never touched
+        try:
+            line = run_extras(a.cache_dir, a.catalog, ids)
+        except BaseException as ex:
+            _quiet_signals()
+            msg = "catalog.json unreadable" if isinstance(ex, BodiesError) else _sanitize(ex)
+            _log(f"extras pass failed: {msg} ({type(ex).__name__}: {ex})")
+            print(f"ERROR {msg}", flush=True); return 1
+        _quiet_signals(); _log(f"extras pass: {line}")
+        print(line, flush=True); return 0
     try:
         if a.live:
             line, fetched, stale = run_live(a.cache_dir, a.bodies, ids, a.force)

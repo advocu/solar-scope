@@ -13,6 +13,7 @@ import Quickshell.Io
 import "." as Local
 import "Orbits.js" as Orbits
 import "OrbitsAdapter.js" as Adapter
+import "Extras.js" as Extras
 
 Panel {
     id: root
@@ -32,6 +33,7 @@ Panel {
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
     readonly property bool showPluto: setting("showPluto", false) === true
     readonly property bool showNames: setting("showNames", true) !== false
+    readonly property bool showRoadster: setting("showRoadster", false) === true
 
     // Live data: Orbits.js (no Python at runtime). Recomputed on open/data reload/manual refresh, then only when
     // a body could have moved >= ~0.5 px at the current zoom/size (scope.moveIntervalMs), capped at once a minute.
@@ -43,7 +45,9 @@ Panel {
     function refresh() {
         root.orbitsCalls++
         root._lastCompute = Date.now()
-        root.liveBodies = Adapter.build(Orbits, Orbits.toJdTdb(new Date()), root._orbitCache, {})
+        var jdNow = Orbits.toJdTdb(new Date())
+        root.liveBodies = Adapter.build(Orbits, jdNow, root._orbitCache, {})
+        root.extraRows = Extras.build(root._extrasEph, root.catalog, jdNow, root.liveBodies)   // table only (pages 2/3, Roadster row)
         if (root.playing) {}   // the next play tick draws; an extra out-of-cadence frame here made a short step (judder)
         else if (root.offsetActive) root._playFrame(); else root.bodies = root.liveBodies
         root._schedule()
@@ -234,11 +238,75 @@ Panel {
             root.ephStaleBodies = Array.isArray(d.staleBodies) ? d.staleBodies : []
         }
     }
+    // ---- v1.1 table-only bodies (pages 2/3 and the Roadster row). Own catalog + own Orbits.create() ephemeris:
+    // nothing here reaches `bodies`/`liveBodies`, so the scope never sees these bodies.
+    property var catalog: []             // catalog.json bodies (bundled)
+    property var _extrasEph: null        // Orbits.create(catalog), fed by extras.json
+    property string _extrasText: ""
+    property var extrasFetchedAt: null   // extras.json fetched_utc (epoch ms) | null
+    property real _extrasJdStop: 0       // extras.json last row JD (window end)
+    property var extraRows: []           // Extras.build output, recomputed in refresh()
+    function _applyExtras() {
+        if (!root.catalog.length) return
+        if (!root._extrasEph) root._extrasEph = Orbits.create({ bodies: root.catalog }, { allowFallback: false })
+        var d = null
+        try { d = root._extrasText ? JSON.parse(root._extrasText) : null } catch (e) { d = null }
+        root._extrasEph.setLive(d && d.bodies ? d : null)
+        var f = d ? Date.parse(d.fetched_utc || d.fetchedAt || "") : NaN
+        root.extrasFetchedAt = isFinite(f) ? f : null
+        var stop = 0
+        if (d && d.bodies) for (var id in d.bodies) { var r = d.bodies[id] && d.bodies[id].rows; if (r && r.length) stop = Math.max(stop, r[r.length - 1][0]) }
+        root._extrasJdStop = stop
+        if (root.opened) Qt.callLater(root.refresh)
+    }
+    FileView {
+        id: catalogFile
+        path: root.pluginDir + "/catalog.json"
+        blockLoading: false
+        printErrors: false
+        onLoaded: {
+            var d = null
+            try { d = JSON.parse(text()) } catch (e) { d = null }
+            root.catalog = d && Array.isArray(d.bodies) ? d.bodies.filter(function (b) { return b && b.id && b.horizons_id }) : []
+            root._extrasEph = null
+            root._applyExtras()
+        }
+    }
+    FileView {
+        id: extrasFile
+        path: root.ephemCacheDir + "/extras.json"
+        blockLoading: false
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: { root._extrasText = text(); root._applyExtras() }
+    }
+    // Extras are due when missing, older than 7 days, or within 60 days of their window end.
+    function extrasDue() {
+        if (!root.catalog.length) return ""
+        if (root.extrasFetchedAt === null) return "missing"
+        if (Date.now() - root.extrasFetchedAt > 7 * 86400000) return "older than 7 days"
+        if (root._extrasJdStop - Orbits.toJdTdb(new Date()) < 60) return "within 60 days of window end"
+        return ""
+    }
+    // Chained after a successful planet run (never instead of one), so planet live data is never delayed.
+    Timer {
+        id: extrasChain
+        interval: 2000; repeat: false
+        property int tries: 0
+        onTriggered: {
+            var why = root.extrasDue(); if (why === "") return
+            if (refreshProc.running) { if (++tries < 30) restart(); return }
+            tries = 0
+            root.runUpdate(["--extras"], "extras: " + why)
+        }
+    }
+
     // A FileView watcher misses files that did not exist at startup (first run), so reload
     // everything explicitly once update_cache.py reports OK.
     function reloadCache() {
         for (var i = 0; i < bodyFiles.count; i++) { var f = bodyFiles.objectAt(i); if (f) f.reload() }
-        liveFile.reload(); statusFile.reload()
+        liveFile.reload(); statusFile.reload(); extrasFile.reload()
     }
     // Orbits.lastUpdated() (epoch ms | null): header fallback after status.json fetchedAt (G18, SolarScopePanel).
     property var lastUpdated: null
@@ -322,7 +390,10 @@ Panel {
             onStreamFinished: {
                 var line = text.trim().split("\n").pop()
                 root.refreshStatus = line
-                if (line.indexOf("OK ") === 0) { console.log("solarscope ephemeris:", line); root.reloadCache() }   // FileView watchChanges reloads files
+                if (line.indexOf("OK ") === 0) {   // FileView watchChanges reloads files
+                    console.log("solarscope ephemeris:", line); root.reloadCache()
+                    if (line.indexOf("OK extras") !== 0 && root.extrasDue() !== "") { extrasChain.tries = 0; extrasChain.restart() }
+                }
                 else console.warn("solarscope ephemeris refresh failed:", line || "(no output)", "- using cached/elements data")
             }
         }
@@ -350,8 +421,14 @@ Panel {
         function setNames(on: string): string { panelContent.scope.showNames = root._ipcOn(on); return String(panelContent.scope.showNames) }   // as Space / n
         function state(): string {
             return JSON.stringify({ opened: root.opened, holo: root.holo, speed: root.playSpeed, speedIdx: root.speedIdx,
-                                    playing: root.playing, playUpdates: root.playUpdates, showNames: panelContent.scope.showNames })
+                                    playing: root.playing, playUpdates: root.playUpdates, showNames: panelContent.scope.showNames,
+                                    page: body.page, showRoadster: body.showRoadster,
+                                    extrasFetchedAt: root.extrasFetchedAt ? new Date(root.extrasFetchedAt).toISOString() : null })
         }
+        // v1.1 pages (table only; the scope is never touched)
+        function setPage(n: string): string { body.setPage(parseInt(n)); return String(body.page) }   // as 1 / 2 / 3
+        function setRoadster(on: string): string { body.showRoadster = root._ipcOn(on); return String(body.showRoadster) }   // as t (persists)
+        function table(): string { return body.tableJson() }   // rows of the shown page; null where the table shows an en dash
     }
     function _ipcOn(s) { return ["true", "1", "on", "yes"].indexOf(String(s).trim().toLowerCase()) >= 0 }
 
@@ -401,6 +478,9 @@ Panel {
                 ephError: root.ephError
                 staleBodies: root.ephStaleBodies
                 onShowPlutoChanged: if (showPluto !== root.showPluto) root.persistSettings({ showPluto: showPluto })
+                showRoadster: root.showRoadster
+                onShowRoadsterChanged: if (showRoadster !== root.showRoadster) root.persistSettings({ showRoadster: showRoadster })
+                extraRows: root.extraRows
                 onHoloToggleRequested: root.setHolo(!root.holo)
                 onRefreshRequested: { root.manualRefresh(); root.refresh() }
                 lastManualRefresh: root.manualRefreshAt

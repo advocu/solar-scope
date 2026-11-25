@@ -1,0 +1,247 @@
+{
+ "schema_version": 1,
+ "generated": "2026-11-25",
+ "note": "Table-only bodies (never drawn in the scope). Positions: JPL Horizons via update_cache.py --extras. Asteroid list and diameters: JPL SBDB.",
+ "bodies": [
+  {
+   "id": "ceres",
+   "name": "Ceres",
+   "short": "Ceres",
+   "page": 2,
+   "horizons_id": "DES=20000001;",
+   "spkid": "20000001",
+   "diameter_km": 939.4,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "vesta",
+   "name": "Vesta",
+   "short": "Vesta",
+   "page": 2,
+   "horizons_id": "DES=20000004;",
+   "spkid": "20000004",
+   "diameter_km": 522.77,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "pallas",
+   "name": "Pallas",
+   "short": "Pallas",
+   "page": 2,
+   "horizons_id": "DES=20000002;",
+   "spkid": "20000002",
+   "diameter_km": 513.0,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "hygiea",
+   "name": "Hygiea",
+   "short": "Hygiea",
+   "page": 2,
+   "horizons_id": "DES=20000010;",
+   "spkid": "20000010",
+   "diameter_km": 407.12,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "interamnia",
+   "name": "Interamnia",
+   "short": "Interamnia",
+   "page": 2,
+   "horizons_id": "DES=20000704;",
+   "spkid": "20000704",
+   "diameter_km": 306.313,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "europa52",
+   "name": "Europa",
+   "short": "Europa",
+   "page": 2,
+   "horizons_id": "DES=20000052;",
+   "spkid": "20000052",
+   "diameter_km": 303.918,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "davida",
+   "name": "Davida",
+   "short": "Davida",
+   "page": 2,
+   "horizons_id": "DES=20000511;",
+   "spkid": "20000511",
+   "diameter_km": 270.327,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "euphrosyne",
+   "name": "Euphrosyne",
+   "short": "Euphrosyne",
+   "page": 2,
+   "horizons_id": "DES=20000031;",
+   "spkid": "20000031",
+   "diameter_km": 267.08,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "patientia",
+   "name": "Patientia",
+   "short": "Patientia",
+   "page": 2,
+   "horizons_id": "DES=20000451;",
+   "spkid": "20000451",
+   "diameter_km": 253.9,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "sylvia",
+   "name": "Sylvia",
+   "short": "Sylvia",
+   "page": 2,
+   "horizons_id": "DES=20000087;",
+   "spkid": "20000087",
+   "diameter_km": 253.051,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "juno",
+   "name": "Juno",
+   "short": "Juno",
+   "page": 2,
+   "horizons_id": "DES=20000003;",
+   "spkid": "20000003",
+   "diameter_km": 246.596,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "cybele",
+   "name": "Cybele",
+   "short": "Cybele",
+   "page": 2,
+   "horizons_id": "DES=20000065;",
+   "spkid": "20000065",
+   "diameter_km": 237.26,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "thisbe",
+   "name": "Thisbe",
+   "short": "Thisbe",
+   "page": 2,
+   "horizons_id": "DES=20000088;",
+   "spkid": "20000088",
+   "diameter_km": 232.0,
+   "source": "JPL SBDB 2026-11-25"
+  },
+  {
+   "id": "eris",
+   "name": "Eris",
+   "short": "Eris",
+   "page": 3,
+   "horizons_id": "DES=20136199;",
+   "spkid": "20136199",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "haumea",
+   "name": "Haumea",
+   "short": "Haumea",
+   "page": 3,
+   "horizons_id": "DES=20136108;",
+   "spkid": "20136108",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "makemake",
+   "name": "Makemake",
+   "short": "Makemake",
+   "page": 3,
+   "horizons_id": "DES=20136472;",
+   "spkid": "20136472",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "gonggong",
+   "name": "Gonggong",
+   "short": "Gonggong",
+   "page": 3,
+   "horizons_id": "DES=20225088;",
+   "spkid": "20225088",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "quaoar",
+   "name": "Quaoar",
+   "short": "Quaoar",
+   "page": 3,
+   "horizons_id": "DES=20050000;",
+   "spkid": "20050000",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "sedna",
+   "name": "Sedna",
+   "short": "Sedna",
+   "page": 3,
+   "horizons_id": "DES=20090377;",
+   "spkid": "20090377",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "orcus",
+   "name": "Orcus",
+   "short": "Orcus",
+   "page": 3,
+   "horizons_id": "DES=20090482;",
+   "spkid": "20090482",
+   "diameter_km": null,
+   "source": "JPL SBDB 2026-11-25 (no diameter in SBDB)"
+  },
+  {
+   "id": "voyager1",
+   "name": "Voyager 1",
+   "short": "Voyager 1",
+   "page": 3,
+   "horizons_id": "-31",
+   "diameter_km": null,
+   "source": "JPL Horizons spacecraft"
+  },
+  {
+   "id": "voyager2",
+   "name": "Voyager 2",
+   "short": "Voyager 2",
+   "page": 3,
+   "horizons_id": "-32",
+   "diameter_km": null,
+   "source": "JPL Horizons spacecraft"
+  },
+  {
+   "id": "newhorizons",
+   "name": "New Horizons",
+   "short": "New Horizons",
+   "page": 3,
+   "horizons_id": "-98",
+   "diameter_km": null,
+   "source": "JPL Horizons spacecraft"
+  },
+  {
+   "id": "roadster",
+   "name": "Tesla Roadster",
+   "short": "Roadster",
+   "page": 1,
+   "horizons_id": "-143205",
+   "diameter_km": null,
+   "span": [
+    "2018-02-07 03:00",
+    "2090-01-01 00:00"
+   ],
+   "source": "JPL Horizons spacecraft (tesla_s11, solution #11)"
+  }
+ ]
+}

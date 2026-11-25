@@ -33,6 +33,10 @@ Item {
     property real playSegDays: 0       // Panel.qml: keyframe segment length (days)
     property bool playing: false       // Panel.qml: playback timer running (label hysteresis on)
     property real playbackOffsetMs: 0  // ms ahead of real time (0 = now)
+    // ---- v1.1 pages (table only; the scope above is never touched)
+    property int page: 1               // 1 = bodies in the scope, 2 = largest asteroids, 3 = beyond Neptune
+    property bool showRoadster: false  // t: Tesla Roadster as a plain row at the end of page 1 (no dot)
+    property var extraRows: []         // Panel.qml Extras.build(): [{id,name,short,page,size,dist,distEarth,speed,lightTime}], NaN = missing
     // ---- out
     signal playToggleRequested()
     signal holoToggleRequested()
@@ -184,10 +188,41 @@ Item {
                 hintTimer.restart()
             }
         }
-        onSelectedIdChanged: {
-            for (var i = 0; i < scope.tableRows.length; i++) if (scope.tableRows[i].id === selectedId) { table.currentIndex = i; table.positionViewAtIndex(i, ListView.Contain); return }
-            table.currentIndex = -1
+        onSelectedIdChanged: root._mapSelection()
+        Keys.forwardTo: [pager]   // v1.1: page keys first (pager accepts only 1 2 3 t, and j k Tab on pages 2/3)
+    }
+    function _mapSelection() {   // v1.0 behaviour, page 1 only (pages 2/3 rows are never selected)
+        if (root.page !== 1) return
+        for (var i = 0; i < scope.tableRows.length; i++) if (scope.tableRows[i].id === scope.selectedId) { table.currentIndex = i; table.positionViewAtIndex(i, ListView.Contain); return }
+        table.currentIndex = -1
+    }
+    // v1.1 key target (Keys.forwardTo above: runs before the scope's own keys). Accepts only its keys; the rest falls through.
+    Item {
+        id: pager
+        objectName: "pager"
+        Keys.onPressed: function(e) {
+            switch (e.key) {
+            case Qt.Key_1: root.setPage(1); break
+            case Qt.Key_2: root.setPage(2); break
+            case Qt.Key_3: root.setPage(3); break
+            case Qt.Key_T: root.showRoadster = !root.showRoadster; break
+            case Qt.Key_Tab: case Qt.Key_J: if (root.page === 1) return; root.scrollRows(1); break
+            case Qt.Key_Backtab: case Qt.Key_K: if (root.page === 1) return; root.scrollRows(-1); break
+            default: return
+            }
+            e.accepted = true
         }
+    }
+    function setPage(n) {
+        if (!(n === 1 || n === 2 || n === 3) || n === page) return
+        page = n
+        if (n !== 1) _syncExtra()
+        table.positionViewAtBeginning()
+        if (n === 1) { table.currentIndex = -1; _mapSelection() }
+    }
+    function scrollRows(d) {   // pages 2/3: j k move the visible window one row
+        var max = Math.max(0, table.contentHeight - table.height)
+        table.contentY = table.originY + Math.max(0, Math.min(max, table.contentY - table.originY + d * root.rowH))
     }
 
     // Error tooltip for the header (status.json lastError), elided if long.
@@ -244,59 +279,99 @@ Item {
         id: tableHead
         anchors { left: parent.left; right: parent.right; bottom: table.top; leftMargin: root.pad + 6; rightMargin: root.pad + 6; bottomMargin: 6 }
         Repeater {
-            model: root.tableW >= 620 ? ["BODY", "DIST SUN (AU)", "DIST EARTH (AU)", "SPEED (km/s)", "LIGHT TIME"]
-                                     : ["BODY", "SUN AU", "EARTH AU", "km/s", "LIGHT"]
+            model: {
+                var h = root.tableW >= 620 ? ["BODY", "DIST SUN (AU)", "DIST EARTH (AU)", "SPEED (km/s)", "LIGHT TIME"]
+                                           : ["BODY", "SUN AU", "EARTH AU", "km/s", "LIGHT"]
+                if (root.page === 2) { h[0] = "ASTEROID"; h[4] = root.tableW >= 620 ? "SIZE (km)" : "SIZE km" }
+                else if (root.page === 3) h[0] = "BEYOND"
+                return h
+            }
             Cell { col: index; text: modelData; opacity: 0.8; font.pixelSize: 12; font.letterSpacing: 1; width: (root.tableW - 12) * root.colW[index] / root.tableW }
         }
     }
     ListView {
         id: table
         anchors { left: parent.left; right: parent.right; bottom: hint.top; leftMargin: root.pad; rightMargin: root.pad; bottomMargin: 12 }
-        height: Math.min(count, 10) * root.rowH
-        clip: true; interactive: count > 10; boundsBehavior: Flickable.StopAtBounds
-        model: rowsModel
+        // v1.1 height lock: v1.0's height (scope rows only) on every page, so the scope above keeps its exact geometry.
+        // Extra rows (Roadster, pages 2/3) scroll inside it.
+        height: Math.min(scope.tableRows.length, 10) * root.rowH
+        clip: true; interactive: contentHeight > height + 0.5; boundsBehavior: Flickable.StopAtBounds
+        model: root.page === 1 ? rowsModel : extraModel
         currentIndex: -1
         highlightFollowsCurrentItem: false
         delegate: Item {
             id: row
             width: table.width; height: root.rowH
-            readonly property bool sel: model.bid === scope.selectedId
+            readonly property bool sel: !model.extra && model.bid === scope.selectedId
             readonly property bool earth: model.bid === "earth"
             readonly property color c: earth ? root.earthInk : root.ink
             Rectangle { anchors.fill: parent; radius: 3; color: root.ink; opacity: row.sel ? 0.08 : 0 }
             Row {
                 anchors { left: parent.left; right: parent.right; leftMargin: 6; rightMargin: 6; verticalCenter: parent.verticalCenter }
                 readonly property real k: (root.tableW - 12) / root.tableW
-                Cell { col: 0; color: row.c; width: root.colW[0] * parent.k; text: model.name; opacity: row.sel ? 1 : 0.75; font.bold: row.sel }
-                Cell { col: 1; color: row.c; width: root.colW[1] * parent.k; text: model.dist.toFixed(3); opacity: row.sel ? 1 : 0.75 }
+                Cell { col: 0; color: row.c; width: root.colW[0] * parent.k; opacity: row.sel ? 1 : 0.75; font.bold: row.sel
+                       text: model.extra && root.narrow ? model.sname : model.name
+                       elide: model.extra && root.narrow ? Text.ElideRight : Text.ElideNone }
+                Cell { col: 1; color: row.c; width: root.colW[1] * parent.k; text: root.fmtAU(model.dist, model.extra); opacity: row.sel ? 1 : 0.75 }
                 Cell { col: 2; color: row.c; width: root.colW[2] * parent.k; opacity: row.sel ? 1 : 0.75
-                       text: model.bid === "earth" ? "\u2013" : isFinite(model.distEarth) ? model.distEarth.toFixed(3) : "\u2013" }
-                Cell { col: 3; color: row.c; width: root.colW[3] * parent.k; text: model.speed.toFixed(2); opacity: row.sel ? 1 : 0.75 }
-                Cell { col: 4; color: row.c; width: root.colW[4] * parent.k; text: scope.fmtLight(model.lightTime); opacity: row.sel ? 1 : 0.75 }
+                       text: model.bid === "earth" ? "\u2013" : root.fmtAU(model.distEarth, model.extra) }
+                Cell { col: 3; color: row.c; width: root.colW[3] * parent.k; text: isFinite(model.speed) ? model.speed.toFixed(2) : "\u2013"; opacity: row.sel ? 1 : 0.75 }
+                Cell { col: 4; color: row.c; width: root.colW[4] * parent.k; opacity: row.sel ? 1 : 0.75
+                       text: root.page === 2 ? (isFinite(model.size) ? String(Math.round(model.size)) : "\u2013") : scope.fmtLight(model.lightTime) }
             }
-            MouseArea { anchors.fill: parent; onClicked: { scope.select(model.bid); scope.forceActiveFocus() } }
+            MouseArea { anchors.fill: parent; onClicked: { if (!model.extra) scope.select(model.bid); scope.forceActiveFocus() } }   // extra rows: not selectable
         }
     }
 
     // Rows updated in place while the set of bodies is unchanged (1 Hz data must not reset the
     // view or currentIndex); rebuilt only when bodies are added/removed/reordered.
     ListModel { id: rowsModel }
-    function _row(r) { return { bid: r.id, name: r.name, dist: r.info.dist, distEarth: r.info.distEarth, speed: r.info.speed, lightTime: r.info.lightTime } }
-    function _syncRows() {
-        var rows = scope.tableRows || [], same = rows.length === rowsModel.count
-        for (var i = 0; same && i < rows.length; i++) if (rowsModel.get(i).bid !== rows[i].id) same = false
+    function _row(r) { return { bid: r.id, name: r.name, sname: r.name, extra: false, size: NaN, dist: r.info.dist, distEarth: r.info.distEarth, speed: r.info.speed, lightTime: r.info.lightTime } }
+    function _xrow(x) { return { bid: x.id, name: x.name, sname: x.short || x.name, extra: true, size: x.size, dist: x.dist, distEarth: x.distEarth, speed: x.speed, lightTime: x.lightTime } }
+    function _same(a, b) { return a === b || (typeof a === "number" && typeof b === "number" && isNaN(a) && isNaN(b)) }
+    function _fill(model, list) {   // update in place while the ids are unchanged (no view reset); rebuild otherwise
+        var same = list.length === model.count
+        for (var i = 0; same && i < list.length; i++) if (model.get(i).bid !== list[i].bid) same = false
         if (same) {
-            for (var j = 0; j < rows.length; j++) {
-                var o = _row(rows[j]), m = rowsModel.get(j)
-                for (var k in o) if (m[k] !== o[k]) rowsModel.setProperty(j, k, o[k])
-            }
-            return
+            for (var j = 0; j < list.length; j++) { var o = list[j], m = model.get(j); for (var k in o) if (!_same(m[k], o[k])) model.setProperty(j, k, o[k]) }
+            return false
         }
-        rowsModel.clear()
-        for (var n = 0; n < rows.length; n++) rowsModel.append(_row(rows[n]))
-        var sel = -1
-        for (var q = 0; q < rows.length; q++) if (rows[q].id === scope.selectedId) sel = q
-        table.currentIndex = sel
+        model.clear()
+        for (var n = 0; n < list.length; n++) model.append(list[n])
+        return true
+    }
+    function _extra(id) { for (var i = 0; i < extraRows.length; i++) if (extraRows[i].id === id) return extraRows[i]; return null }
+    function _syncRows() {
+        var rows = scope.tableRows || [], list = rows.map(_row)
+        var rs = showRoadster ? _extra("roadster") : null
+        if (rs) list.push(_xrow(rs))   // after the scope rows: their indices (selection, scanline gap) stay v1.0's
+        var hadRs = rowsModel.count > 0 && rowsModel.get(rowsModel.count - 1).bid === "roadster"
+        if (_fill(rowsModel, list) && page === 1) {
+            var sel = -1
+            for (var q = 0; q < rows.length; q++) if (rows[q].id === scope.selectedId) sel = q
+            table.currentIndex = sel
+        }
+        if (rs && !hadRs && page === 1) Qt.callLater(table.positionViewAtEnd)   // t on: bring the new row into view
+    }
+    // Pages 2/3: page 2 in catalog (size) order, page 3 sorted by distance from the Sun (missing distances last).
+    ListModel { id: extraModel }
+    function _syncExtra() {
+        if (page === 1) return
+        var l = extraRows.filter(function(x){ return x.page === root.page })
+        if (page === 3) l = l.slice().sort(function(a, b){ var fa = isFinite(a.dist), fb = isFinite(b.dist); return fa && fb ? a.dist - b.dist : fa ? -1 : fb ? 1 : 0 })
+        _fill(extraModel, l.map(_xrow))
+    }
+    onExtraRowsChanged: { _syncRows(); _syncExtra() }
+    onShowRoadsterChanged: _syncRows()
+    // Numbers: v1.0 format for scope rows; table-only rows get an en dash when missing and 2 decimals from 100 AU.
+    function fmtAU(v, extra) { return !isFinite(v) ? "\u2013" : extra && v >= 100 ? v.toFixed(2) : v.toFixed(3) }
+    function tableJson() {
+        var m = page === 1 ? rowsModel : extraModel, rows = []
+        function n(v) { return typeof v === "number" && isFinite(v) ? v : null }
+        for (var i = 0; i < m.count; i++) { var r = m.get(i)
+            rows.push({ id: r.bid, name: r.name, distSun: n(r.dist), distEarth: r.bid === "earth" ? null : n(r.distEarth), speed: n(r.speed),
+                        lightTime: page === 2 ? undefined : n(r.lightTime), sizeKm: page === 2 ? n(r.size) : undefined }) }
+        return JSON.stringify({ page: page, rows: rows })
     }
     Connections { target: scope; function onTableRowsChanged() { root._syncRows() } }
     Component.onCompleted: _syncRows()
@@ -305,6 +380,16 @@ Item {
 
     // ---- hint line: full form when it fits on two lines, compact form otherwise
     TextMetrics { id: fullHint; font: hint.font; text: root.hintFull }
+    // v1.1: new keys are listed only where they keep v1.0's line count; the hint's height is always v1.0's (hint10),
+    // so the table and the scope above keep their exact v1.0 geometry.
+    function _nb(a) { return a.map(function(t){ return t.replace(/ /g, "\u00a0") }).join(" \u00b7 ") }
+    readonly property string hintFull11: _nb(["drag h l rotate", "\u2191 \u2193 tilt", "wheel + - zoom", "j k select", "space names", ". play", "[ ] speed", "p pluto", "t tesla", "1 2 3 page", "g holo", "0 live", "r refresh", "esc close"])
+    readonly property string hintShort11: _nb(["hl \u2191 \u2193", "+ -", "jk", "spc names", ". play", "[ ]", "pgrt", "123", "0", "esc"])
+    readonly property bool _v10full: fullHint.advanceWidth <= 1.8 * hint.width
+    Text { id: hint10; visible: false; width: hint.width; font: hint.font; wrapMode: Text.WordWrap; lineHeight: 1.25; horizontalAlignment: Text.AlignHCenter
+           text: root.refreshHint !== "" ? root.refreshHint : (root._v10full ? root.hintFull : root.hintShort) }
+    Text { id: hint11; visible: false; width: hint.width; font: hint.font; wrapMode: Text.WordWrap; lineHeight: 1.25; horizontalAlignment: Text.AlignHCenter
+           text: root._v10full ? root.hintFull11 : root.hintShort11 }
     readonly property string hintFull: ["drag h l rotate", "\u2191 \u2193 tilt", "wheel + - zoom", "j k select", "space names", ". play", "[ ] speed", "p pluto", "g holo", "0 live", "r refresh", "esc close"].map(function(t){ return t.replace(/ /g, "\u00a0") }).join(" \u00b7 ")   // a key never splits from its action
     readonly property string hintShort: ["hl \u2191 \u2193", "+ -", "jk", "spc names", ". play", "[ ]", "pgr", "0", "esc"].map(function(t){ return t.replace(/ /g, "\u00a0") }).join(" \u00b7 ")
     Text {
@@ -312,7 +397,9 @@ Item {
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
         width: parent.width - 2 * root.pad
         horizontalAlignment: Text.AlignHCenter; elide: Text.ElideNone; wrapMode: Text.WordWrap   // every bound key listed; wraps to 2 lines
-        text: root.refreshHint !== "" ? root.refreshHint : (fullHint.advanceWidth <= 1.8 * width ? root.hintFull : root.hintShort)
+        height: hint10.implicitHeight   // v1.1 lock: v1.0's hint height
+        text: root.refreshHint !== "" ? root.refreshHint
+              : hint11.lineCount <= hint10.lineCount ? hint11.text : hint10.text
         color: root.ink; opacity: root.refreshHint !== "" ? 0.85 : 0.75
         font { family: root.fontFamily; pixelSize: 12; letterSpacing: 0.4 }
         lineHeight: 1.25
@@ -336,12 +423,13 @@ Item {
         property string _key: ""
         function _check() { var k = JSON.stringify(holes()) + root.width + "x" + root.height; if (k !== _key) { _key = k; requestPaint() } }
         Connections { target: scope; function onCardRectChanged() { scanlines._check() } function onSelectedIdChanged() { scanlines._check() } function onTableRowsChanged() { scanlines._check() } }
+        Connections { target: root; function onPageChanged() { scanlines._check() } }
         Connections { target: table; function onContentYChanged() { scanlines._check() } function onYChanged() { scanlines._check() } function onHeightChanged() { scanlines._check() } }
         // Areas that already carry their single fill (G17: <= 8%) get no scanlines on top.
         function holes() {
             var r = [], cr = scope.cardRect
             if (cr && cr.length === 4) { var p = scope.mapToItem(scanlines, cr[0], cr[1]); r.push([Math.round(p.x), Math.round(p.y), cr[2], cr[3]]) }
-            var rows = scope.tableRows || [], idx = -1
+            var rows = root.page === 1 ? (scope.tableRows || []) : [], idx = -1   // v1.1: selected-row gap on page 1 only
             for (var i = 0; i < rows.length; i++) if (rows[i].id === scope.selectedId) { idx = i; break }
             if (idx >= 0) {
                 var top = idx * root.rowH - table.contentY + table.originY

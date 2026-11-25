@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.advocu.solar-scope",
   "name": "Solar Scope",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Suyash Verma",
   "description": "A live solar system in the bar: planets as dots on thin orbits, with playback and a hologram mode.",
   "kinds": [
@@ -18,7 +18,8 @@
     "allowMultiple": false,
     "defaults": {
       "showPluto": false,
-      "showNames": true
+      "showNames": true,
+      "showRoadster": false
     },
     "schema": [
       {
@@ -32,6 +33,12 @@
         "type": "boolean",
         "label": "Show planet names (Space or N)",
         "defaultValue": true
+      },
+      {
+        "key": "showRoadster",
+        "type": "boolean",
+        "label": "Show the Tesla Roadster row (T)",
+        "defaultValue": false
       }
     ],
     "description": "Tiny orbit icon; opens a scope of the solar system.",
