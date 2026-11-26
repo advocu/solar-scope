@@ -14,7 +14,10 @@ listed in status.json staleBodies. Prints exactly one short, sanitized status li
   "OK live <k>/<n> bodies, <m> cached <fetchedAt> <path>"   live, some failed      exit 0
   "OK skipped live.json age <m>m < 25m"                     live, fresh            exit 0
   "OK extras <n> bodies <fetchedAt> <path>"                 extras, all bodies     exit 0
-  "OK extras <k>/<n> bodies, <m> cached <fetchedAt> <path>" extras, some failed    exit 0
+  "OK extras <k>/<n> bodies[, retried <r>][, <c> kept from cache][, <m> missing] <fetchedAt> <path>"
+                                                            extras, partial or retry  exit 0
+                              (kept from cache: previous rows kept; missing: no rows yet. A fresh but incomplete
+                              extras.json is retried for just those bodies; fetchedAt stays the last full run.)
   "ERROR horizons unavailable|horizons timeout|interrupted|bodies.json unreadable|catalog.json unreadable|update failed"  exit 1
 Run-level deadline (--deadline / SOLAR_SCOPE_DEADLINE, default 45 s; --extras default 150 s); per request min(15 s, remaining).
 A timeout or connection failure means the server is down: no retries, remaining bodies kept stale.
@@ -34,6 +37,7 @@ REQUEST_TIMEOUT_S = 15.0
 DEFAULT_DEADLINE_S = float(os.environ.get("SOLAR_SCOPE_DEADLINE", "45"))
 EXTRAS_DEADLINE_S = float(os.environ.get("SOLAR_SCOPE_DEADLINE", "150"))
 EXTRAS_BEFORE_D, EXTRAS_AFTER_D, EXTRAS_STEP_D = 8, 364, 4
+EXTRAS_MAX_AGE_D, EXTRAS_MIN_AHEAD_D = 7, 60  # same as Panel.qml extrasDue()
 LIVE_MIN_AGE_S = 25 * 60
 LIVE_STEP_MIN, LIVE_BEFORE_H, LIVE_AFTER_H = 30, 1, 2
 
@@ -237,19 +241,40 @@ def run_live(cache_dir, bodies_path, ids, force):
         "staleBodies": failed, "columns": ["jd_tdb", "x", "y", "z", "vx", "vy", "vz"], "bodies": out})
     return f"OK live {_counts(ok, failed)} {_iso(fetched)} {live_path}", fetched, failed
 
+def _extras_fresh(old, today):
+    """The previous extras.json is fresh: fetched within EXTRAS_MAX_AGE_D and its window reaches EXTRAS_MIN_AHEAD_D ahead."""
+    try:
+        f = dt.datetime.strptime(old["fetched_utc"], "%Y-%m-%dT%H:%M:%SZ").date()
+        end = dt.date.fromisoformat(old["window"][1])
+        return old.get("kind") == "extras" and (today - f).days < EXTRAS_MAX_AGE_D and (end - today).days >= EXTRAS_MIN_AHEAD_D
+    except Exception:
+        return False
+
 def run_extras(cache_dir, catalog_path, ids):
     """Extras mode: table-only bodies (catalog.json). Per body: a failure keeps its previous rows. Returns the status
-    line; raises AllFailed (extras.json untouched) when nothing succeeded."""
+    line; raises AllFailed (extras.json untouched) when nothing succeeded.
+    Retry: when the previous file is fresh but incomplete (bodies missing or kept stale), only those bodies are
+    fetched, on the previous window; fetched_utc (the 7-day clock) stays that of the last full run."""
     path = os.path.join(cache_dir, "extras.json")
     bodies = _load_bodies(catalog_path, ids)
     now = _utcnow(); today = now.date()
-    s, e = today - dt.timedelta(days=EXTRAS_BEFORE_D), today + dt.timedelta(days=EXTRAS_AFTER_D)
-    old_bodies = (_read_json(path) or {}).get("bodies") or {}
-    out, ok, failed, reason = {}, [], [], "horizons unavailable"
+    old = _read_json(path) or {}
+    old_bodies = old.get("bodies") if isinstance(old.get("bodies"), dict) else {}
+    def has_rows(i): return isinstance(old_bodies.get(i), dict) and bool(old_bodies[i].get("rows"))
+    old_stale = set(old.get("staleBodies") or [])
+    todo = [b for b in bodies if not has_rows(b["id"]) or b["id"] in old_stale]
+    retry = bool(todo) and len(todo) < len(bodies) and _extras_fresh(old, today)
+    if retry:
+        s, e = dt.date.fromisoformat(old["window"][0]), dt.date.fromisoformat(old["window"][1])
+        _log(f"extras: retry {len(todo)} incomplete bodies: {','.join(b['id'] for b in todo)}")
+    else:
+        s, e, todo = today - dt.timedelta(days=EXTRAS_BEFORE_D), today + dt.timedelta(days=EXTRAS_AFTER_D), bodies
+    out = {b["id"]: old_bodies[b["id"]] for b in bodies if retry and b not in todo}
+    ok, kept, missing, reason = [], [], [], "horizons unavailable"
     def keep_old(x):
-        failed.append(x["id"])
-        if isinstance(old_bodies.get(x["id"]), dict): out[x["id"]] = old_bodies[x["id"]]
-    for i, b in enumerate(bodies):
+        if has_rows(x["id"]): out[x["id"]] = old_bodies[x["id"]]; kept.append(x["id"])
+        else: missing.append(x["id"])
+    for i, b in enumerate(todo):
         start, stop = s.isoformat(), e.isoformat()
         span = b.get("span")
         if span:  # clamp to the trajectory's valid span (e.g. the Roadster: 2018-02-07 03:00 .. 2090-01-01)
@@ -257,22 +282,31 @@ def run_extras(cache_dir, catalog_path, ids):
             if start >= stop: keep_old(b); continue
         try:
             rows = fetch_range(b["horizons_id"], start, stop, f"{EXTRAS_STEP_D}d", label=b["id"])
-        except (ServerDown, Interrupted) as ex:  # stop: this and every remaining body keep old rows
+        except (ServerDown, Interrupted) as ex:  # stop: this and every remaining body keep old rows (or stay missing)
             reason = ex.reason
-            _log(f"extras: stopping at {b['id']}: {reason}; kept {len(bodies) - i} bodies stale")
-            for x in bodies[i:]: keep_old(x)
+            k0, m0 = len(kept), len(missing)
+            for x in todo[i:]: keep_old(x)
+            _log(f"extras: stopping at {b['id']}: {reason}; {len(todo) - i} bodies not fetched"
+                 f" ({len(kept) - k0} kept from cache, {len(missing) - m0} missing)")
             break
         except Exception:
             keep_old(b); continue
         out[b["id"]] = {"horizons_id": b["horizons_id"], "rows": rows, "fetched_utc": _iso(_utcnow())}
         ok.append(b["id"])
-    if not ok: raise AllFailed(",".join(failed), reason)
-    fetched = _utcnow()
+    if not ok: raise AllFailed(",".join(kept + missing), reason)
+    upd = _utcnow()
+    fetched = old["fetched_utc"] if retry else _iso(upd)
     os.makedirs(cache_dir, exist_ok=True)
-    _atomic_json(path, {"kind": "extras", "fetched_utc": _iso(fetched), "fetchedAt": _iso(fetched), "frame": "heliocentric ecliptic J2000",
-        "units": "AU, AU/day", "time": "JD TDB", "step_days": EXTRAS_STEP_D, "window": [s.isoformat(), e.isoformat()],
-        "staleBodies": failed, "columns": ["jd_tdb", "x", "y", "z", "vx", "vy", "vz"], "bodies": out})
-    return f"OK extras {_counts(ok, failed)} {_iso(fetched)} {path}"
+    _atomic_json(path, {"kind": "extras", "fetched_utc": fetched, "fetchedAt": fetched, "updated_utc": _iso(upd),
+        "frame": "heliocentric ecliptic J2000", "units": "AU, AU/day", "time": "JD TDB", "step_days": EXTRAS_STEP_D,
+        "window": [s.isoformat(), e.isoformat()], "staleBodies": kept + missing, "missingBodies": missing,
+        "columns": ["jd_tdb", "x", "y", "z", "vx", "vy", "vz"], "bodies": out})
+    n, have = len(bodies), len(bodies) - len(missing) - len(kept)
+    parts = [f"{n} bodies" if have == n else f"{have}/{n} bodies"]
+    if retry: parts.append(f"retried {len(todo)}")
+    if kept: parts.append(f"{len(kept)} kept from cache")
+    if missing: parts.append(f"{len(missing)} missing")
+    return f"OK extras {', '.join(parts)} {fetched} {path}"
 
 def _counts(ok, failed):
     n = len(ok) + len(failed)

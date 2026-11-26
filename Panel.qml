@@ -245,6 +245,8 @@ Panel {
     property string _extrasText: ""
     property var extrasFetchedAt: null   // extras.json fetched_utc (epoch ms) | null
     property real _extrasJdStop: 0       // extras.json last row JD (window end)
+    property int extrasIncomplete: 0     // catalog bodies without rows in extras.json, or listed stale (a partial download)
+    property real _extrasTriedAt: 0      // epoch ms of the last automatic --extras run (this session)
     property var extraRows: []           // Extras.build output, recomputed in refresh()
     function _applyExtras() {
         if (!root.catalog.length) return
@@ -257,6 +259,10 @@ Panel {
         var stop = 0
         if (d && d.bodies) for (var id in d.bodies) { var r = d.bodies[id] && d.bodies[id].rows; if (r && r.length) stop = Math.max(stop, r[r.length - 1][0]) }
         root._extrasJdStop = stop
+        var stale = d && Array.isArray(d.staleBodies) ? d.staleBodies : [], inc = 0
+        if (d && d.bodies) for (var k = 0; k < root.catalog.length; k++) { var c = root.catalog[k].id, b = d.bodies[c]
+            if (!b || !b.rows || !b.rows.length || stale.indexOf(c) >= 0) inc++ }
+        root.extrasIncomplete = inc
         if (root.opened) Qt.callLater(root.refresh)
     }
     FileView {
@@ -281,12 +287,16 @@ Panel {
         onFileChanged: reload()
         onLoaded: { root._extrasText = text(); root._applyExtras() }
     }
-    // Extras are due when missing, older than 7 days, or within 60 days of their window end.
+    // Extras are due when missing, older than 7 days, within 60 days of their window end, or incomplete
+    // (a partial download: update_cache.py then fetches just the missing bodies). Automatic runs are chained
+    // on planet runs (every 30 min) and at most one per 25 min, so a JPL outage is not retried on every manual refresh.
     function extrasDue() {
         if (!root.catalog.length) return ""
+        if (root._extrasTriedAt > 0 && Date.now() - root._extrasTriedAt < 25 * 60000) return ""
         if (root.extrasFetchedAt === null) return "missing"
         if (Date.now() - root.extrasFetchedAt > 7 * 86400000) return "older than 7 days"
         if (root._extrasJdStop - Orbits.toJdTdb(new Date()) < 60) return "within 60 days of window end"
+        if (root.extrasIncomplete > 0) return "incomplete: " + root.extrasIncomplete + " bodies"
         return ""
     }
     // Chained after a successful planet run (never instead of one), so planet live data is never delayed.
@@ -298,7 +308,7 @@ Panel {
             var why = root.extrasDue(); if (why === "") return
             if (refreshProc.running) { if (++tries < 30) restart(); return }
             tries = 0
-            root.runUpdate(["--extras"], "extras: " + why)
+            if (root.runUpdate(["--extras"], "extras: " + why)) root._extrasTriedAt = Date.now()
         }
     }
 
@@ -423,7 +433,8 @@ Panel {
             return JSON.stringify({ opened: root.opened, holo: root.holo, speed: root.playSpeed, speedIdx: root.speedIdx,
                                     playing: root.playing, playUpdates: root.playUpdates, showNames: panelContent.scope.showNames,
                                     page: body.page, showRoadster: body.showRoadster,
-                                    extrasFetchedAt: root.extrasFetchedAt ? new Date(root.extrasFetchedAt).toISOString() : null })
+                                    extrasFetchedAt: root.extrasFetchedAt ? new Date(root.extrasFetchedAt).toISOString() : null,
+                                    extrasIncomplete: root.extrasIncomplete })
         }
         // v1.1 pages (table only; the scope is never touched)
         function setPage(n: string): string { body.setPage(parseInt(n)); return String(body.page) }   // as 1 / 2 / 3

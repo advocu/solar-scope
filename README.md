@@ -68,7 +68,7 @@ Positions come from `Orbits.js` (pure JS, with `bodies.json` bundled as `bodies-
 
 Files live in `$XDG_CACHE_HOME/solar-scope/ephemeris/` (fallback `~/.cache/solar-scope/ephemeris/`): `<id>.json` (daily, ±1 year), `live.json` (30-minute samples around now) and `status.json`. The panel picks up changes automatically.
 
-Pages 2 and 3 and the Roadster row use `catalog.json` (bundled; the asteroid list and diameters come from the JPL Small-Body Database) and `extras.json` in the same folder: positions from JPL Horizons every 4 days for about a year ahead. After a successful refresh, `update_cache.py --extras` renews `extras.json` when it is missing, older than 7 days, or within 60 days of its end. These bodies are never drawn in the scope.
+Pages 2 and 3 and the Roadster row use `catalog.json` (bundled; the asteroid list and diameters come from the JPL Small-Body Database) and `extras.json` in the same folder: positions from JPL Horizons every 4 days for about a year ahead. After a successful refresh, `update_cache.py --extras` renews `extras.json` when it is missing, older than 7 days, or within 60 days of its end; if a download stopped partway (JPL busy or down), the missing bodies are fetched again with a later refresh, at most every 25 minutes. These bodies are never drawn in the scope.
 
 About 10 seconds after shell start, and then every 30 minutes, `update_cache.py` runs in the background and contacts NASA JPL Horizons: a full refresh when the yearly cache is missing, older than 7 days, or within 90 days of its end; otherwise `--live` (skipped if `live.json` is under 25 minutes old).
 
